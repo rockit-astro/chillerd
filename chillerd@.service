@@ -1,0 +1,13 @@
+[Unit]
+Description=Daemon for exposing an attached Thermotek T257P chiller via Pyro.
+After=syslog.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Restart=on-failure
+Type=simple
+ExecStart=/usr/bin/env python3 -u /usr/bin/chillerd /etc/chillerd/%i.json
+
+[Install]
+WantedBy=multi-user.target

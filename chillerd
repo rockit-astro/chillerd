@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+#
+# This file is part of the Robotic Observatory Control Kit (rockit)
+#
+# rockit is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# rockit is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with rockit.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Daemon for an attached Thermotek T257P chiller"""
+
+import argparse
+import datetime
+import threading
+import time
+import Pyro4
+import serial
+from rockit.common import log
+from rockit.chiller import Config
+
+
+class ChillerDaemon:
+    """Daemon class that wraps the RS232 interface"""
+    def __init__(self, config):
+        self._config = config
+        self._lock = threading.Lock()
+        self._running = True
+        self._date = datetime.datetime.utcnow()
+        self._port = None
+        self._port_error = False
+
+        runloop = threading.Thread(target=self.run)
+        runloop.daemon = True
+        runloop.start()
+
+    def run(self):
+        """Main run loop"""
+        while self._running:
+            # Initial setup
+            try:
+                self._port = serial.Serial(self._config.serial_port, self._config.serial_baud,
+                                           timeout=self._config.serial_timeout)
+                print('Connected to', self._config.serial_port)
+                prefix = 'Restored' if self._port_error else 'Established'
+                log.info(self._config.log_name, prefix + ' serial connection to controller')
+                self._port_error = False
+            except Exception as exception:
+                print(exception)
+                print('Will retry in 10 seconds...')
+                if not self._port_error:
+                    log.error(self._config.log_name, 'Failed to connect to controller')
+
+                self._port_error = True
+
+                time.sleep(10.)
+                continue
+
+            try:
+                with self._lock:
+                    self._date = datetime.datetime.utcnow()
+
+                # Flush any stale state
+                self._port.flushInput()
+                self._port.flushOutput()
+
+                # Main run loop
+                while self._running:
+                    with self._lock:
+                        self._date = datetime.datetime.now()
+
+                    time.sleep(self._config.query_delay)
+
+            except Exception as exception:
+                with self._lock:
+                    self._date = datetime.datetime.utcnow()
+
+                self._port.close()
+                print(exception)
+                print('Will retry in 10 seconds...')
+                if not self._port_error:
+                    log.error(self._config.log_name, 'Lost serial connection to controller')
+                self._port_error = True
+                time.sleep(10.)
+
+    @Pyro4.expose
+    def report_status(self):
+        """Returns a dictionary containing the current state"""
+        with self._lock:
+            return {
+                'date': self._date.strftime('%Y-%m-%dT%H:%M:%SZ')
+            }
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Chiller Server')
+    parser.add_argument('config', help='Path to configuration json file')
+    args = parser.parse_args()
+
+    c = Config(args.config)
+    c.daemon.launch(ChillerDaemon(c))

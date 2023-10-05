@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+#
+# This file is part of the Robotic Observatory Control Kit (rockit)
+#
+# rockit is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# rockit is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with rockit.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Commandline client for controlling the chiller daemon"""
+
+import datetime
+import glob
+import json
+import os
+import sys
+import Pyro4
+from rockit.common import TFmt
+from rockit.chiller import Config
+
+SCRIPT_NAME = os.path.basename(sys.argv[0])
+sys.excepthook = Pyro4.util.excepthook
+
+
+def run_command(command, args):
+    """Runs a daemon command, handling error messages"""
+    if 'CHILLERD_CONFIG_PATH' in os.environ:
+        config = Config(os.environ['CHILLERD_CONFIG_PATH'])
+    else:
+        # Load the config file defined in the CHILLERD_CONFIG_PATH environment variable or from the
+        # default system location (/etc/chillerd/). Exit with an error if zero or multiple are found.
+        files = glob.glob("/etc/chillerd/*.json")
+        if len(files) != 1:
+            print('error: failed to guess the default config file. ' +
+                  'Run as CHILLERD_CONFIG_PATH=/path/to/config.json chiller <command>')
+            return 1
+
+        config = Config(files[0])
+
+    try:
+        ret = command(config, args)
+    except Pyro4.errors.CommunicationError:
+        ret = -101
+
+    sys.exit(ret)
+
+
+def print_status(config, _):
+    """Reports the current pipeline status"""
+    with config.daemon.connect() as lensheater:
+        data = lensheater.report_status()
+
+    date = datetime.datetime.strptime(data['date'], '%Y-%m-%dT%H:%M:%SZ')
+    print(f'Data received {TFmt.Bold}{date}{TFmt.Clear}:')
+
+    return 0
+
+
+def print_json(config, _):
+    """Prints the latest environment data in machine-readable form"""
+    with config.daemon.connect() as lensheater:
+        latest = lensheater.report_status()
+
+    print(json.dumps(latest or {}))
+    return 0
+
+
+def print_usage():
+    """Prints the utility help"""
+    print(f'usage: {SCRIPT_NAME} <command> [<args>]')
+    print()
+    print('   status      print a human-readable summary of the lens temperatures')
+    print('   json        print a machine-readable summary of the lens temperatures')
+    print()
+    return 0
+
+
+if __name__ == '__main__':
+    commands = {
+        'status': print_status,
+        'json': print_json
+    }
+
+    if len(sys.argv) >= 2 and sys.argv[1] in commands:
+        sys.exit(run_command(commands[sys.argv[1]], sys.argv[2:]))
+
+    sys.exit(print_usage())
