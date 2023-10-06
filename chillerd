@@ -24,8 +24,16 @@ import time
 import Pyro4
 import serial
 from rockit.common import log
-from rockit.chiller import Config
+from rockit.chiller import Config, ChillerStatus
 
+
+class TTKCommand:
+    ReadStatus = 1
+    ReadSetpoint = 3
+    ReadTemperature = 4
+    ReadAmbient = 8
+    ReadTECLevel = 13
+    SetStatus = 15
 
 class ChillerDaemon:
     """Daemon class that wraps the RS232 interface"""
@@ -33,13 +41,35 @@ class ChillerDaemon:
         self._config = config
         self._lock = threading.Lock()
         self._running = True
-        self._date = datetime.datetime.utcnow()
         self._port = None
         self._port_error = False
+
+        self._status = {
+            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'status': ChillerStatus.Disabled,
+        }
 
         runloop = threading.Thread(target=self.run)
         runloop.daemon = True
         runloop.start()
+
+    def send_message(self, command_id, data=''):
+        message = f'.01{command_id:02d}00000000{data}'
+        chk = 0
+        for c in message:
+            chk += ord(c)
+        message += f'{chk&0xFF:02X}\r'
+        self._port.write(message.encode('ascii'))
+
+    def read_response(self):
+        message = self._port.read_until(b'\r')
+        if not message:
+            raise TimeoutError()
+
+        if message[5] != 48:
+            raise Exception(f'Chiller returned error: {message}')
+
+        return message[14:-3]
 
     def run(self):
         """Main run loop"""
@@ -47,40 +77,75 @@ class ChillerDaemon:
             # Initial setup
             try:
                 self._port = serial.Serial(self._config.serial_port, self._config.serial_baud,
-                                           timeout=self._config.serial_timeout)
+                                           timeout=self._config.serial_timeout, xonxoff=True)
                 print('Connected to', self._config.serial_port)
                 prefix = 'Restored' if self._port_error else 'Established'
-                log.info(self._config.log_name, prefix + ' serial connection to controller')
+                log.info(self._config.log_name, prefix + ' serial connection to chiller')
                 self._port_error = False
             except Exception as exception:
                 print(exception)
                 print('Will retry in 10 seconds...')
                 if not self._port_error:
-                    log.error(self._config.log_name, 'Failed to connect to controller')
-
+                    log.error(self._config.log_name, 'Failed to connect to chiller')
+                with self._lock:
+                    self._status = {
+                        'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'status': ChillerStatus.Disabled,
+                    }
                 self._port_error = True
 
                 time.sleep(10.)
                 continue
 
             try:
-                with self._lock:
-                    self._date = datetime.datetime.utcnow()
-
                 # Flush any stale state
                 self._port.flushInput()
                 self._port.flushOutput()
-
                 # Main run loop
                 while self._running:
+                    self.send_message(TTKCommand.ReadStatus)
+                    status = self.read_response()
+                    pump_enabled = chr(status[1]) == '1'
+                    time.sleep(1)
+                    self.send_message(TTKCommand.ReadSetpoint)
+                    setpoint = int(self.read_response()) / 10.0
+                    time.sleep(1)
+                    self.send_message(TTKCommand.ReadTemperature)
+                    temperature = int(self.read_response()) / 10.0
+                    time.sleep(1)
+                    self.send_message(TTKCommand.ReadAmbient)
+                    ambient = int(self.read_response()) / 10.0
+                    time.sleep(1)
+                    self.send_message(TTKCommand.ReadTECLevel)
+                    tec_status = self.read_response()
+                    tec_power = int(tec_status[:3])
+                    tec_mode = chr(tec_status[-1])
+
+                    if tec_mode == 'C' and pump_enabled:
+                        status = ChillerStatus.Cooling
+                    elif tec_mode == 'H' and pump_enabled:
+                        status = ChillerStatus.Heating
+                    else:
+                        status = ChillerStatus.Idle
+
                     with self._lock:
-                        self._date = datetime.datetime.now()
+                        self._status = {
+                            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'status': status,
+                            'setpoint': setpoint,
+                            'temperature': temperature,
+                            'tec_power': tec_power,
+                        }
 
                     time.sleep(self._config.query_delay)
 
             except Exception as exception:
                 with self._lock:
-                    self._date = datetime.datetime.utcnow()
+                    with self._lock:
+                        self._status = {
+                            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'status': ChillerStatus.Disabled,
+                        }
 
                 self._port.close()
                 print(exception)
@@ -94,9 +159,7 @@ class ChillerDaemon:
     def report_status(self):
         """Returns a dictionary containing the current state"""
         with self._lock:
-            return {
-                'date': self._date.strftime('%Y-%m-%dT%H:%M:%SZ')
-            }
+            return self._status
 
 
 if __name__ == '__main__':

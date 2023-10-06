@@ -24,7 +24,7 @@ import os
 import sys
 import Pyro4
 from rockit.common import TFmt
-from rockit.chiller import Config
+from rockit.chiller import Config, ChillerStatus
 
 SCRIPT_NAME = os.path.basename(sys.argv[0])
 sys.excepthook = Pyro4.util.excepthook
@@ -55,19 +55,24 @@ def run_command(command, args):
 
 def print_status(config, _):
     """Reports the current pipeline status"""
-    with config.daemon.connect() as lensheater:
-        data = lensheater.report_status()
+    with config.daemon.connect() as chiller:
+        data = chiller.report_status()
 
     date = datetime.datetime.strptime(data['date'], '%Y-%m-%dT%H:%M:%SZ')
     print(f'Data received {TFmt.Bold}{date}{TFmt.Clear}:')
+    print('   Chiller is ' + ChillerStatus.label(data['status'], True))
+    if 'temperature' in data:
+        print(f'   Temperature is {TFmt.Bold}{data["temperature"]}\u00B0C{TFmt.Clear}')
+        print(f'   Set point is {TFmt.Bold}{data["setpoint"]}\u00B0C{TFmt.Clear}')
+        print(f'   TEC power is {TFmt.Bold}{data["tec_power"]}%{TFmt.Clear}')
 
     return 0
 
 
 def print_json(config, _):
     """Prints the latest environment data in machine-readable form"""
-    with config.daemon.connect() as lensheater:
-        latest = lensheater.report_status()
+    with config.daemon.connect() as chiller:
+        latest = chiller.report_status()
 
     print(json.dumps(latest or {}))
     return 0
@@ -77,8 +82,8 @@ def print_usage():
     """Prints the utility help"""
     print(f'usage: {SCRIPT_NAME} <command> [<args>]')
     print()
-    print('   status      print a human-readable summary of the lens temperatures')
-    print('   json        print a machine-readable summary of the lens temperatures')
+    print('   status      print a human-readable summary of the chiller status')
+    print('   json        print a machine-readable summary of the chiller status')
     print()
     return 0
 

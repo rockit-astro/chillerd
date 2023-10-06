@@ -4,5 +4,5 @@
   "serial_port": "/dev/chiller",
   "serial_baud": 9600,
   "serial_timeout": 5,
-  "query_delay": 30
+  "query_delay": 7
 }

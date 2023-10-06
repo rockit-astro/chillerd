@@ -17,3 +17,4 @@
 """chillerd common code"""
 
 from .config import Config
+from .constants import ChillerStatus
