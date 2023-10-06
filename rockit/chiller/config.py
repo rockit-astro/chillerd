@@ -17,12 +17,15 @@
 """Helper function to validate and parse the json config file"""
 
 import json
-from rockit.common import daemons, validation
+from rockit.common import daemons, IP, validation
 
 CONFIG_SCHEMA = {
     'type': 'object',
     'additionalProperties': False,
-    'required': ['daemon', 'log_name', 'serial_port', 'serial_baud', 'serial_timeout', 'query_delay'],
+    'required': [
+        'daemon', 'log_name', 'control_machines', 'camera_machines',
+        'serial_port', 'serial_baud', 'serial_timeout', 'query_delay'
+    ],
     'properties': {
         'daemon': {
             'type': 'string',
@@ -30,6 +33,20 @@ CONFIG_SCHEMA = {
         },
         'log_name': {
             'type': 'string',
+        },
+        'control_machines': {
+            'type': 'array',
+            'items': {
+                'type': 'string',
+                'machine_name': True
+            }
+        },
+        'camera_machines': {
+            'type': 'array',
+            'items': {
+                'type': 'string',
+                'machine_name': True
+            }
         },
         'serial_port': {
             'type': 'string',
@@ -53,7 +70,7 @@ class Config:
     """Daemon configuration parsed from a json file"""
     def __init__(self, config_filename):
         # Will throw on file not found or invalid json
-        with open(config_filename, 'r') as config_file:
+        with open(config_filename, 'r', encoding='utf-8') as config_file:
             config_json = json.load(config_file)
 
         # Will throw on schema violations
@@ -65,6 +82,8 @@ class Config:
 
         self.daemon = getattr(daemons, config_json['daemon'])
         self.log_name = config_json['log_name']
+        self.control_ips = [getattr(IP, machine) for machine in config_json['control_machines']]
+        self.camera_ips = [getattr(IP, machine) for machine in config_json['camera_machines']]
         self.serial_port = config_json['serial_port']
         self.serial_baud = int(config_json['serial_baud'])
         self.serial_timeout = int(config_json['serial_timeout'])

@@ -4,7 +4,15 @@ _lensheater()
     local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    opts="status json"
+    opts="status json mode enable disable"
+
+    case "${prev}" in
+        mode)
+            opts="auto manual"
+            ;;
+        *)
+            ;;
+    esac
 
     COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
     return 0

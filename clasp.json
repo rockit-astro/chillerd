@@ -1,6 +1,8 @@
 {
   "daemon": "clasp_chiller",
   "log_name": "chillerd@clasp",
+  "control_machines": ["CLASPTCS"],
+  "camera_machines": ["CLASPDAS"],
   "serial_port": "/dev/chiller",
   "serial_baud": 9600,
   "serial_timeout": 5,

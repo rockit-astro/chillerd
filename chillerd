@@ -21,10 +21,13 @@ import argparse
 import datetime
 import threading
 import time
+from astropy.time import Time
+import astropy.units as u
 import Pyro4
 import serial
 from rockit.common import log
-from rockit.chiller import Config, ChillerStatus
+from rockit.common.helpers import pyro_client_matches
+from rockit.chiller import Config, ChillerMode, ChillerStatus, CommandStatus
 
 
 class TTKCommand:
@@ -40,9 +43,14 @@ class ChillerDaemon:
     def __init__(self, config):
         self._config = config
         self._lock = threading.Lock()
+        self._loop_condition = threading.Condition()
         self._running = True
         self._port = None
         self._port_error = False
+
+        self._mode = ChillerMode.Automatic
+        self._request_timestamp = Time('2000-01-01')
+        self._request_enabled = False
 
         self._status = {
             'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -128,16 +136,32 @@ class ChillerDaemon:
                     else:
                         status = ChillerStatus.Idle
 
-                    with self._lock:
-                        self._status = {
-                            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-                            'status': status,
-                            'setpoint': setpoint,
-                            'temperature': temperature,
-                            'tec_power': tec_power,
-                        }
+                    with self._loop_condition:
+                        if self._mode == ChillerMode.Automatic:
+                            request_enabled = self._request_timestamp > Time.now() - 1 * u.minute or ambient < 5.0
+                        else:
+                            request_enabled = self._request_enabled
 
-                    time.sleep(self._config.query_delay)
+                        if request_enabled and status == ChillerStatus.Idle:
+                            self.send_message(TTKCommand.SetStatus, '1')
+                            print(self.read_response())
+                            continue
+
+                        if not request_enabled and status != ChillerStatus.Idle:
+                            self.send_message(TTKCommand.SetStatus, '0')
+                            print(self.read_response())
+                            continue
+
+                        with self._lock:
+                            self._status = {
+                                'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'status': status,
+                                'setpoint': setpoint,
+                                'temperature': temperature,
+                                'ambient': ambient,
+                                'tec_power': tec_power
+                            }
+                        self._loop_condition.wait(self._config.query_delay)
 
             except Exception as exception:
                 with self._lock:
@@ -159,7 +183,60 @@ class ChillerDaemon:
     def report_status(self):
         """Returns a dictionary containing the current state"""
         with self._lock:
-            return self._status
+            status = {}
+            status.update(self._status)
+            status['mode'] = self._mode
+            return status
+
+    @Pyro4.expose
+    def set_mode(self, mode):
+        """Switch the chiller between manual and automatic control"""
+        if not pyro_client_matches(self._config.control_ips):
+            return CommandStatus.InvalidControlIP
+
+        with self._lock:
+            self._mode = mode
+
+        with self._loop_condition:
+            self._loop_condition.notify_all()
+
+        return CommandStatus.Succeeded
+
+    @Pyro4.expose
+    def set_enabled(self, enabled):
+        """Enable or disable the chiller when in manual mode"""
+        if not pyro_client_matches(self._config.control_ips):
+            return CommandStatus.InvalidControlIP
+
+        if self._mode != ChillerMode.Manual:
+            return CommandStatus.ModeIsAutomatic
+
+        with self._lock:
+            self._request_enabled = enabled
+
+        with self._loop_condition:
+            self._loop_condition.notify_all()
+
+        return CommandStatus.Succeeded
+
+    @Pyro4.expose
+    def notify_camera_cooling_active(self):
+        """
+        Called regularly by the cameras daemons to notify that their cooling is active,
+        and requires the chilling to be running. The chiller will disable itself (in automatic mode)
+        once 1 minute has passed without any notifications.
+        """
+        if not pyro_client_matches(self._config.camera_ips):
+            return
+
+        if self._mode != ChillerMode.Automatic:
+            return
+
+        with self._lock:
+            self._request_timestamp = Time.now()
+
+        with self._loop_condition:
+            self._loop_condition.notify_all()
 
 
 if __name__ == '__main__':

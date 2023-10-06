@@ -24,7 +24,7 @@ import os
 import sys
 import Pyro4
 from rockit.common import TFmt
-from rockit.chiller import Config, ChillerStatus
+from rockit.chiller import Config, ChillerMode, ChillerStatus
 
 SCRIPT_NAME = os.path.basename(sys.argv[0])
 sys.excepthook = Pyro4.util.excepthook
@@ -61,6 +61,7 @@ def print_status(config, _):
     date = datetime.datetime.strptime(data['date'], '%Y-%m-%dT%H:%M:%SZ')
     print(f'Data received {TFmt.Bold}{date}{TFmt.Clear}:')
     print('   Chiller is ' + ChillerStatus.label(data['status'], True))
+    print(f'   Mode is ' + ChillerMode.label(data['mode'], True))
     if 'temperature' in data:
         print(f'   Temperature is {TFmt.Bold}{data["temperature"]}\u00B0C{TFmt.Clear}')
         print(f'   Set point is {TFmt.Bold}{data["setpoint"]}\u00B0C{TFmt.Clear}')
@@ -78,10 +79,35 @@ def print_json(config, _):
     return 0
 
 
+def mode(config, args):
+    """Changes between automatic and manual control"""
+    if args and args[0] in ['auto', 'manual']:
+            with config.daemon.connect() as chiller:
+                return chiller.set_mode(ChillerMode.Automatic if args[0] == 'auto' else ChillerMode.Manual)
+
+    print(f'usage: {SCRIPT_NAME} mode (auto|manual)')
+    return -1
+
+
+def enable(config, _):
+    """Enable chiller when in manual mode"""
+    with config.daemon.connect() as chiller:
+        return chiller.set_enabled(True)
+
+
+def disable(config, _):
+    """Enable chiller when in manual mode"""
+    with config.daemon.connect() as chiller:
+        return chiller.set_enabled(False)
+
+
 def print_usage():
     """Prints the utility help"""
     print(f'usage: {SCRIPT_NAME} <command> [<args>]')
     print()
+    print('   mode        toggle between manual and automatic control')
+    print('   enable      enable chiller when in manual mode')
+    print('   disable     disablle chiller when in manual mode')
     print('   status      print a human-readable summary of the chiller status')
     print('   json        print a machine-readable summary of the chiller status')
     print()
@@ -91,7 +117,10 @@ def print_usage():
 if __name__ == '__main__':
     commands = {
         'status': print_status,
-        'json': print_json
+        'json': print_json,
+        'mode': mode,
+        'enable': enable,
+        'disable': disable
     }
 
     if len(sys.argv) >= 2 and sys.argv[1] in commands:
