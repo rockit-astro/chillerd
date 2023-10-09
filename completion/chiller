@@ -1,4 +1,4 @@
-_lensheater()
+_chiller()
 {
     compopt +o default
     local cur prev opts
