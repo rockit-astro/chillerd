@@ -86,6 +86,12 @@ class ChillerDaemon:
             try:
                 self._port = serial.Serial(self._config.serial_port, self._config.serial_baud,
                                            timeout=self._config.serial_timeout, xonxoff=True)
+
+                # Make sure the chiller responds
+                self.send_message(TTKCommand.ReadStatus)
+                self.read_response()
+                time.sleep(1)
+
                 print('Connected to', self._config.serial_port)
                 prefix = 'Restored' if self._port_error else 'Established'
                 log.info(self._config.log_name, prefix + ' serial connection to chiller')
@@ -165,11 +171,10 @@ class ChillerDaemon:
 
             except Exception as exception:
                 with self._lock:
-                    with self._lock:
-                        self._status = {
-                            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-                            'status': ChillerStatus.Disabled,
-                        }
+                    self._status = {
+                        'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'status': ChillerStatus.Disabled,
+                    }
 
                 self._port.close()
                 print(exception)
