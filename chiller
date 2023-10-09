@@ -24,7 +24,7 @@ import os
 import sys
 import Pyro4
 from rockit.common import TFmt
-from rockit.chiller import Config, ChillerMode, ChillerStatus
+from rockit.chiller import Config, ChillerMode, ChillerStatus, CommandStatus
 
 SCRIPT_NAME = os.path.basename(sys.argv[0])
 sys.excepthook = Pyro4.util.excepthook
@@ -49,6 +49,10 @@ def run_command(command, args):
         ret = command(config, args)
     except Pyro4.errors.CommunicationError:
         ret = -101
+
+    # Print message associated with error codes, except for -1 (error handled locally)
+    if ret not in (0, -1):
+        print(CommandStatus.message(ret))
 
     sys.exit(ret)
 
