@@ -179,13 +179,15 @@ class ChillerDaemon:
                             request_enabled = self._request_enabled
 
                         if request_enabled and status == ChillerStatus.Idle:
-                            self.send_message(TTKCommand.SetStatus, '1')
                             log.info(self._config.log_name, 'Enabling chiller')
+                            self.send_message(TTKCommand.SetStatus, '1')
+                            self.read_response()
                             continue
 
                         if not request_enabled and status != ChillerStatus.Idle:
-                            self.send_message(TTKCommand.SetStatus, '0')
                             log.info(self._config.log_name, 'Disabling chiller')
+                            self.send_message(TTKCommand.SetStatus, '0')
+                            self.read_response()
                             continue
 
                         with self._lock:
