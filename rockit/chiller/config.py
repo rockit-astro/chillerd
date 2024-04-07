@@ -23,9 +23,8 @@ CONFIG_SCHEMA = {
     'type': 'object',
     'additionalProperties': False,
     'required': [
-        'daemon', 'log_name', 'control_machines', 'camera_machines',
-        'serial_port', 'serial_baud', 'serial_timeout', 'query_delay',
-        'temperature_daemon', 'temperature_valid_key', 'temperature_value_key',
+        'daemon', 'log_name', 'control_machines', 'serial_port', 'serial_baud', 'serial_timeout', 'query_delay',
+        'power_daemon', 'power_channels', 'temperature_daemon', 'temperature_value_key',
         'antifreeze_enable_limit', 'antifreeze_disable_limit'
     ],
     'properties': {
@@ -37,13 +36,6 @@ CONFIG_SCHEMA = {
             'type': 'string',
         },
         'control_machines': {
-            'type': 'array',
-            'items': {
-                'type': 'string',
-                'machine_name': True
-            }
-        },
-        'camera_machines': {
             'type': 'array',
             'items': {
                 'type': 'string',
@@ -64,6 +56,16 @@ CONFIG_SCHEMA = {
         'query_delay': {
             'type': 'number',
             'min': 0
+        },
+        'power_daemon': {
+            'daemon_name': True,
+            'type': 'string',
+        },
+        'power_channels': {
+            'type': 'array',
+            'items': {
+                'type': 'string',
+            }
         },
         'temperature_daemon': {
             'daemon_name': True,
@@ -103,11 +105,12 @@ class Config:
         self.daemon = getattr(daemons, config_json['daemon'])
         self.log_name = config_json['log_name']
         self.control_ips = [getattr(IP, machine) for machine in config_json['control_machines']]
-        self.camera_ips = [getattr(IP, machine) for machine in config_json['camera_machines']]
         self.serial_port = config_json['serial_port']
         self.serial_baud = int(config_json['serial_baud'])
         self.serial_timeout = int(config_json['serial_timeout'])
         self.query_delay = config_json['query_delay']
+        self.power_daemon = getattr(daemons, config_json['power_daemon'])
+        self.power_channels = config_json['power_channels']
         self.temperature_daemon = getattr(daemons, config_json['temperature_daemon'])
         self.temperature_value_key = config_json['temperature_value_key']
         if 'temperature_valid_key' in config_json:

@@ -37,7 +37,7 @@ class CommandStatus:
 
         10: 'error: chiller is not in manual mode',
 
-        -101: 'error: unable to communicate with dehumidifier daemon',
+        -101: 'error: unable to communicate with chiller daemon',
     }
 
     @classmethod

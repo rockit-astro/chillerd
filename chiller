@@ -66,9 +66,9 @@ def print_status(config, _):
     print(f'Data received {TFmt.Bold}{date}{TFmt.Clear}:')
     print('   Chiller is ' + ChillerStatus.label(data['status'], True))
     print(f'   Mode is ' + ChillerMode.label(data['mode'], True))
-    if 'temperature' in data:
-        print(f'   Temperature is {TFmt.Bold}{data["temperature"]}\u00B0C{TFmt.Clear}')
-        print(f'   Set point is {TFmt.Bold}{data["setpoint"]}\u00B0C{TFmt.Clear}')
+    if 'water_temp' in data:
+        print(f'   Temperature is {TFmt.Bold}{data["water_temp"]}\u00B0C{TFmt.Clear}')
+        print(f'   Set point is {TFmt.Bold}{data["setpoint_temp"]}\u00B0C{TFmt.Clear}')
         print(f'   TEC power is {TFmt.Bold}{data["tec_power"]}%{TFmt.Clear}')
 
     return 0

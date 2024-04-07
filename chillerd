@@ -21,8 +21,6 @@ import argparse
 import datetime
 import threading
 import time
-from astropy.time import Time
-import astropy.units as u
 import Pyro4
 import serial
 from rockit.common import log
@@ -38,6 +36,7 @@ class TTKCommand:
     ReadTECLevel = 13
     SetStatus = 15
 
+
 class ChillerDaemon:
     """Daemon class that wraps the RS232 interface"""
     def __init__(self, config):
@@ -48,11 +47,12 @@ class ChillerDaemon:
         self._port = None
         self._port_error = False
         self._temperature_error = False
+        self._power_error = False
 
         self._mode = ChillerMode.Automatic
-        self._request_timestamp = Time('2000-01-01')
-        self._request_enabled = False
+        self._channels_enabled = []
         self._antifreeze_enabled = False
+        self._request_enabled = False
 
         self._status = {
             'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -68,7 +68,7 @@ class ChillerDaemon:
         chk = 0
         for c in message:
             chk += ord(c)
-        message += f'{chk&0xFF:02X}\r'
+        message += f'{chk & 0xFF:02X}\r'
         self._port.write(message.encode('ascii'))
 
     def read_response(self):
@@ -124,13 +124,13 @@ class ChillerDaemon:
                     pump_enabled = chr(status[1]) == '1'
                     time.sleep(1)
                     self.send_message(TTKCommand.ReadSetpoint)
-                    setpoint = int(self.read_response()) / 10.0
+                    setpoint_temp = int(self.read_response()) / 10.0
                     time.sleep(1)
                     self.send_message(TTKCommand.ReadTemperature)
-                    temperature = int(self.read_response()) / 10.0
+                    water_temp = int(self.read_response()) / 10.0
                     time.sleep(1)
                     self.send_message(TTKCommand.ReadAmbient)
-                    ambient = int(self.read_response()) / 10.0
+                    ambient_temp = int(self.read_response()) / 10.0
                     time.sleep(1)
                     self.send_message(TTKCommand.ReadTECLevel)
                     tec_status = self.read_response()
@@ -145,6 +145,7 @@ class ChillerDaemon:
                         status = ChillerStatus.Idle
 
                     # Prefer dome sensor over chiller sensor (which may be locally warmer due to heat from chiller)
+                    dome_temp = None
                     try:
                         with self._config.temperature_daemon.connect() as daemon:
                             environment = daemon.last_measurement()
@@ -153,19 +154,32 @@ class ChillerDaemon:
                             if not environment[self._config.temperature_valid_key]:
                                 if not self._temperature_error:
                                     self._temperature_error = True
-                                    log.error(self._config.log_name, 'Lost contact with temperature sensor')
+                                    log.error(self._config.log_name, 'Lost contact with dome temperature sensor')
 
                         if self._temperature_error:
                             self._temperature_error = False
-                            log.info(self._config.log_name, 'Restored contact with temperature sensor')
+                            log.info(self._config.log_name, 'Restored contact with dome temperature sensor')
 
                         if not self._temperature_error:
-                            ambient = environment[self._config.temperature_value_key]
+                            dome_temp = environment[self._config.temperature_value_key]
 
                     except Exception:
                         if not self._temperature_error:
-                            log.error(self._config.log_name, 'Lost contact with temperature sensor')
+                            log.error(self._config.log_name, 'Lost contact with dome temperature sensor')
                         self._temperature_error = True
+
+                    channels_enabled = []
+                    try:
+                        with self._config.power_daemon.connect() as daemon:
+                            channels_enabled = [c for c in self._config.power_channels if daemon.value(c) == 1]
+                            if self._power_error:
+                                self._power_error = False
+                                log.info(self._config.log_name, 'Restored contact with power daemon')
+
+                    except Exception:
+                        if not self._power_error:
+                            log.error(self._config.log_name, 'Lost contact with power daemon')
+                        self._power_error = True
 
                     with self._loop_condition:
                         if self._mode == ChillerMode.Automatic:
@@ -173,8 +187,11 @@ class ChillerDaemon:
                             if self._antifreeze_enabled:
                                 antifreeze_limit = self._config.antifreeze_disable_limit
 
-                            self._antifreeze_enabled = ambient < antifreeze_limit
-                            request_enabled = self._antifreeze_enabled or self._request_timestamp > Time.now() - 1 * u.minute
+                            if dome_temp is not None:
+                                self._antifreeze_enabled = dome_temp < antifreeze_limit
+                            else:
+                                self._antifreeze_enabled = ambient_temp < antifreeze_limit
+                            request_enabled = self._antifreeze_enabled or len(channels_enabled) > 0
                         else:
                             request_enabled = self._request_enabled
 
@@ -182,21 +199,26 @@ class ChillerDaemon:
                             log.info(self._config.log_name, 'Enabling chiller')
                             self.send_message(TTKCommand.SetStatus, '1')
                             self.read_response()
+                            time.sleep(1)
                             continue
 
                         if not request_enabled and status != ChillerStatus.Idle:
                             log.info(self._config.log_name, 'Disabling chiller')
                             self.send_message(TTKCommand.SetStatus, '0')
                             self.read_response()
+                            time.sleep(1)
                             continue
 
                         with self._lock:
                             self._status = {
                                 'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
                                 'status': status,
-                                'setpoint': setpoint,
-                                'temperature': temperature,
-                                'ambient': ambient,
+                                'setpoint_temp': setpoint_temp,
+                                'water_temp': water_temp,
+                                'ambient_temp': ambient_temp,
+                                'dome_temp': dome_temp,
+                                'channels_enabled': channels_enabled,
+                                'antifreeze_enabled': self._antifreeze_enabled,
                                 'tec_power': tec_power
                             }
                         self._loop_condition.wait(self._config.query_delay)
@@ -220,9 +242,12 @@ class ChillerDaemon:
     def report_status(self):
         """Returns a dictionary containing the current state"""
         with self._lock:
-            status = {}
+            status = {
+                'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'mode': self._mode
+            }
+
             status.update(self._status)
-            status['mode'] = self._mode
             return status
 
     @Pyro4.expose
@@ -256,30 +281,11 @@ class ChillerDaemon:
 
         return CommandStatus.Succeeded
 
-    @Pyro4.expose
-    def notify_camera_cooling_active(self):
-        """
-        Called regularly by the cameras daemons to notify that their cooling is active,
-        and requires the chilling to be running. The chiller will disable itself (in automatic mode)
-        once 1 minute has passed without any notifications.
-        """
-        if not pyro_client_matches(self._config.camera_ips):
-            return
-
-        if self._mode != ChillerMode.Automatic:
-            return
-
-        with self._lock:
-            self._request_timestamp = Time.now()
-
-        with self._loop_condition:
-            self._loop_condition.notify_all()
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Chiller Server')
     parser.add_argument('config', help='Path to configuration json file')
     args = parser.parse_args()
 
-    c = Config(args.config)
-    c.daemon.launch(ChillerDaemon(c))
+    config = Config(args.config)
+    config.daemon.launch(ChillerDaemon(config))
