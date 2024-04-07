@@ -24,7 +24,9 @@ CONFIG_SCHEMA = {
     'additionalProperties': False,
     'required': [
         'daemon', 'log_name', 'control_machines', 'camera_machines',
-        'serial_port', 'serial_baud', 'serial_timeout', 'query_delay'
+        'serial_port', 'serial_baud', 'serial_timeout', 'query_delay',
+        'temperature_daemon', 'temperature_valid_key', 'temperature_value_key',
+        'antifreeze_enable_limit', 'antifreeze_disable_limit'
     ],
     'properties': {
         'daemon': {
@@ -62,9 +64,27 @@ CONFIG_SCHEMA = {
         'query_delay': {
             'type': 'number',
             'min': 0
-        }
+        },
+        'temperature_daemon': {
+            'daemon_name': True,
+            'type': 'string',
+        },
+        'temperature_value_key': {
+            'type': 'string',
+        },
+        'temperature_valid_key': {
+            'type': 'string',
+        },
+        'antifreeze_enable_limit': {
+            'type': 'number'
+        },
+        'antifreeze_disable_limit': {
+            'type': 'number'
+        },
+
     }
 }
+
 
 class Config:
     """Daemon configuration parsed from a json file"""
@@ -88,3 +108,11 @@ class Config:
         self.serial_baud = int(config_json['serial_baud'])
         self.serial_timeout = int(config_json['serial_timeout'])
         self.query_delay = config_json['query_delay']
+        self.temperature_daemon = getattr(daemons, config_json['temperature_daemon'])
+        self.temperature_value_key = config_json['temperature_value_key']
+        if 'temperature_valid_key' in config_json:
+            self.temperature_valid_key = config_json['temperature_valid_key']
+        else:
+            self.temperature_valid_key = None
+        self.antifreeze_enable_limit = config_json['antifreeze_enable_limit']
+        self.antifreeze_disable_limit = config_json['antifreeze_disable_limit']

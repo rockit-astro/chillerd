@@ -47,10 +47,12 @@ class ChillerDaemon:
         self._running = True
         self._port = None
         self._port_error = False
+        self._temperature_error = False
 
         self._mode = ChillerMode.Automatic
         self._request_timestamp = Time('2000-01-01')
         self._request_enabled = False
+        self._antifreeze_enabled = False
 
         self._status = {
             'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -142,9 +144,37 @@ class ChillerDaemon:
                     else:
                         status = ChillerStatus.Idle
 
+                    # Prefer dome sensor over chiller sensor (which may be locally warmer due to heat from chiller)
+                    try:
+                        with self._config.temperature_daemon.connect() as daemon:
+                            environment = daemon.last_measurement()
+
+                        if self._config.temperature_valid_key and self._config.temperature_valid_key in environment:
+                            if not environment[self._config.temperature_valid_key]:
+                                if not self._temperature_error:
+                                    self._temperature_error = True
+                                    log.error(self._config.log_name, 'Lost contact with temperature sensor')
+
+                        if self._temperature_error:
+                            self._temperature_error = False
+                            log.info(self._config.log_name, 'Restored contact with temperature sensor')
+
+                        if not self._temperature_error:
+                            ambient = environment[self._config.temperature_value_key]
+
+                    except Exception:
+                        if not self._temperature_error:
+                            log.error(self._config.log_name, 'Lost contact with temperature sensor')
+                        self._temperature_error = True
+
                     with self._loop_condition:
                         if self._mode == ChillerMode.Automatic:
-                            request_enabled = self._request_timestamp > Time.now() - 1 * u.minute or ambient < 5.0
+                            antifreeze_limit = self._config.antifreeze_enable_limit
+                            if self._antifreeze_enabled:
+                                antifreeze_limit = self._config.antifreeze_disable_limit
+
+                            self._antifreeze_enabled = ambient < antifreeze_limit
+                            request_enabled = self._antifreeze_enabled or self._request_timestamp > Time.now() - 1 * u.minute
                         else:
                             request_enabled = self._request_enabled
 
