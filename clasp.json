@@ -9,8 +9,8 @@
   "power_daemon": "clasp_power",
   "power_channels": ["cam1", "cam2"],
   "temperature_daemon": "clasp_domealert",
-  "temperature_value_key": "internal_humidity",
-  "temperature_valid_key": "internal_humidity_valid",
+  "temperature_value_key": "internal_temperature",
+  "temperature_valid_key": "internal_temperature_valid",
   "antifreeze_enable_limit": 5,
   "antifreeze_disable_limit": 7
 }
