@@ -213,6 +213,7 @@ class ChillerDaemon:
                             self._status = {
                                 'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
                                 'status': status,
+                                'status_label': ChillerStatus.label(status),
                                 'setpoint_temp': setpoint_temp,
                                 'water_temp': water_temp,
                                 'ambient_temp': ambient_temp,
