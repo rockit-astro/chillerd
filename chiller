@@ -23,7 +23,7 @@ import json
 import os
 import sys
 import Pyro4
-from rockit.common import TFmt
+from rockit.common import print
 from rockit.chiller import Config, ChillerMode, ChillerStatus, CommandStatus
 
 SCRIPT_NAME = os.path.basename(sys.argv[0])
@@ -63,13 +63,13 @@ def print_status(config, _):
         data = chiller.report_status()
 
     date = datetime.datetime.strptime(data['date'], '%Y-%m-%dT%H:%M:%SZ')
-    print(f'Data received {TFmt.Bold}{date}{TFmt.Clear}:')
+    print(f'Data received [b]{date}[/b]:')
     print('   Chiller is ' + ChillerStatus.label(data['status'], True))
     print(f'   Mode is ' + ChillerMode.label(data['mode'], True))
     if 'water_temp' in data:
-        print(f'   Temperature is {TFmt.Bold}{data["water_temp"]}\u00B0C{TFmt.Clear}')
-        print(f'   Set point is {TFmt.Bold}{data["setpoint_temp"]}\u00B0C{TFmt.Clear}')
-        print(f'   TEC power is {TFmt.Bold}{data["tec_power"]}%{TFmt.Clear}')
+        print(f'   Temperature is [b]{data["water_temp"]}\u00B0C[/b]')
+        print(f'   Set point is [b]{data["setpoint_temp"]}\u00B0C[/b]')
+        print(f'   TEC power is [b]{data["tec_power"]}%[/b]')
 
     return 0
 
@@ -107,7 +107,7 @@ def disable(config, _):
 
 def print_usage():
     """Prints the utility help"""
-    print(f'usage: {SCRIPT_NAME} <command> [<args>]')
+    print(f'usage: {SCRIPT_NAME} <command> \\[<args>]')
     print()
     print('   mode        toggle between manual and automatic control')
     print('   enable      enable chiller when in manual mode')
