@@ -7,7 +7,7 @@
   "serial_timeout": 5,
   "query_delay": 7,
   "power_daemon": "clasp_power",
-  "power_channels": ["cam1", "cam2"],
+  "power_channels": ["cmos", "swir"],
   "temperature_daemon": "clasp_domealert",
   "temperature_value_key": "internal_temperature",
   "temperature_valid_key": "internal_temperature_valid",
