@@ -55,7 +55,7 @@ class ChillerDaemon:
         self._request_enabled = False
 
         self._status = {
-            'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'status': ChillerStatus.Disabled,
         }
 
@@ -105,7 +105,7 @@ class ChillerDaemon:
                     log.error(self._config.log_name, 'Failed to connect to chiller')
                 with self._lock:
                     self._status = {
-                        'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                         'status': ChillerStatus.Disabled,
                     }
                 self._port_error = True
@@ -211,7 +211,7 @@ class ChillerDaemon:
 
                         with self._lock:
                             self._status = {
-                                'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                                 'status': status,
                                 'status_label': ChillerStatus.label(status),
                                 'setpoint_temp': setpoint_temp,
@@ -227,7 +227,7 @@ class ChillerDaemon:
             except Exception as exception:
                 with self._lock:
                     self._status = {
-                        'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                         'status': ChillerStatus.Disabled,
                     }
 
@@ -244,7 +244,7 @@ class ChillerDaemon:
         """Returns a dictionary containing the current state"""
         with self._lock:
             status = {
-                'date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 'mode': self._mode
             }
 
