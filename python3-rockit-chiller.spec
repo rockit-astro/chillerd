@@ -1,6 +1,6 @@
 Name:           python3-rockit-chiller
 Version:        %{_version}
-Release:        1
+Release:        1%{dist}
 License:        GPL3
 Summary:        Common backend code for the chiller daemon.
 Url:            https://github.com/rockit-astro/chillerd

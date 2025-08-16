@@ -1,6 +1,6 @@
 Name:      rockit-chiller
 Version:   %{_version}
-Release:   1
+Release:   1%{dist}
 Summary:   Water chiller
 Url:       https://github.com/rockit-astro/chillerd
 License:   GPL-3.0
